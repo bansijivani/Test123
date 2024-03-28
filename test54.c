@@ -2,96 +2,152 @@
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
+#include <assert.h>
 
-#define SESS_MAGIC 0x1234
-#define VEF_MAGIC 0x5678
+#define SESS_MAGIC 0xDEADBEEF
+#define VEF_MAGIC 0xCAFEBABE
 
-enum vgz_flag { VGZ_NORMAL, VGZ_FINISH };
-
-struct vef_priv {
-    int error;
-    size_t tot;
-    size_t npend;
-    char* pending;
-    char* bufp;
-    // Placeholder for the actual compression object
-    void* vgz;
-};
-
-struct worker {
-    struct vef_priv* vef_priv;
+// Dummy data structures and types
+enum vgz_flag {
+    VGZ_NORMAL,
+    VGZ_FINISH
 };
 
 struct sess {
-    unsigned magic;
-    struct worker* wrk;
-    // Placeholder for an object with length
-    struct {
-        size_t len;
-    }* obj;
+    int magic;
+    struct wrk* wrk;
 };
 
-// Placeholder for VGZ_Ibuf function
-void VGZ_Ibuf(void* vgz, const char* buf, size_t len) {
-    // Stub: supposed to provide input buffer to compression object
+struct wrk {
+    struct vef_priv_* vef_priv;
+};
+
+struct vef_priv_ {
+    int magic;
+    int error;
+    ssize_t tot;
+    size_t npend;
+    char* pending;
+    char* bufp;
+    void* vgz;
+};
+
+// Dummy functions
+int VGZ_Ibuf(void* vgz, const void* buf, size_t len) {
+    // Dummy implementation
+    return 0;
 }
 
-// Placeholder for VGZ_Gzip function
+int VGZ_ObufStorage(const struct sess* sp, void* vgz) {
+    // Dummy implementation
+    return 0;
+}
+
 int VGZ_Gzip(void* vgz, const void** dp, size_t* dl, enum vgz_flag flg) {
-    // Stub: supposed to perform compression
-    *dp = NULL;  // Example: No data processed
-    *dl = 0;     // Example: No data length
-    return 0;    // Example: Assume normal operation
+    // Dummy implementation
+    *dp = NULL;
+    *dl = 0;
+    return 0;
 }
 
-// Placeholder for VGZ_IbufEmpty function
 int VGZ_IbufEmpty(void* vgz) {
-    // Stub: Check if input buffer is empty
+    // Dummy implementation
     return 1;
 }
 
-// Placeholder for VGZ_ObufFull function
 int VGZ_ObufFull(void* vgz) {
-    // Stub: Check if output buffer is full
+    // Dummy implementation
     return 0;
 }
 
-// Placeholder for VGZ_ObufStorage function
-int VGZ_ObufStorage(const struct sess* sp, void* vgz) {
-    // Stub: Prepare storage for output buffer
-    return 0;
-}
+// The given code snippet
+ssize_t vfp_vep_callback(const struct sess* sp, ssize_t l, enum vgz_flag flg) {
+    struct vef_priv_* vef;
+    size_t dl, px;
+    const void* dp;
+    int i;
 
-ssize_t vfp_vep_callback(const struct sess* sp, ssize_t l, enum vgz_flag flg);
+    if (sp == NULL || sp->magic != SESS_MAGIC) {
+        fprintf(stderr, "Invalid session pointer\n");
+        return -1;
+    }
+
+    vef = sp->wrk->vef_priv;
+
+    if (vef == NULL || vef->magic != VEF_MAGIC) {
+        fprintf(stderr, "Invalid vef_priv pointer\n");
+        return -1;
+    }
+
+    assert(l >= 0);
+
+    if (vef->error) {
+        vef->tot += l;
+        return (vef->tot);
+    }
+
+    if (l == 0 && flg == VGZ_NORMAL)
+        return (vef->tot);
+
+    do {
+        px = vef->npend;
+        if (l < px)
+            px = l;
+
+        if (px != 0) {
+            VGZ_Ibuf(vef->vgz, vef->pending, px);
+            l -= px;
+        } else {
+            VGZ_Ibuf(vef->vgz, vef->bufp, l);
+            vef->bufp += l;
+            l = 0;
+        }
+
+        do {
+            if (VGZ_ObufStorage(sp, vef->vgz)) {
+                vef->error = errno;
+                vef->tot += l;
+                return (vef->tot);
+            }
+            i = VGZ_Gzip(vef->vgz, &dp, &dl, flg);
+            vef->tot += dl;
+            sp->wrk->vef_priv->tot += dl;
+        } while (!VGZ_IbufEmpty(vef->vgz) || (flg != VGZ_NORMAL && VGZ_ObufFull(vef->vgz)));
+
+        if (px != 0) {
+            memmove(vef->pending, vef->pending + px, vef->npend - px);
+            vef->npend -= px;
+        }
+    } while (l > 0);
+
+    if (flg == VGZ_FINISH)
+        assert(i == 1);
+    else
+        assert(i == 0);
+
+    return (vef->tot);
+}
 
 int main() {
-    // Example setup and call to vfp_vep_callback
-    struct sess example_sess;
-    struct worker example_worker;
-    struct vef_priv example_vef_priv;
-    struct {
-        size_t len;
-    } example_obj;
+    // Create dummy data structures
+    struct sess session;
+    struct wrk worker;
+    struct vef_priv_ vef_priv;
 
-    // Setup example structures (This would normally be done more meaningfully)
-    example_sess.magic = SESS_MAGIC;
-    example_sess.wrk = &example_worker;
-    example_sess.obj = &example_obj;
-    example_worker.vef_priv = &example_vef_priv;
-    example_vef_priv.error = 0; // No error
-    example_vef_priv.tot = 0;   // Total processed bytes
-    example_vef_priv.npend = 0; // No pending bytes
-    example_vef_priv.pending = NULL; // No pending data
-    example_vef_priv.bufp = "Example data to process"; // Example data
-    example_vef_priv.vgz = NULL; // Placeholder for compression object
+    // Initialize dummy data
+    session.magic = SESS_MAGIC;
+    worker.vef_priv = &vef_priv;
+    vef_priv.magic = VEF_MAGIC;
+    vef_priv.error = 0;
+    vef_priv.tot = 0;
+    vef_priv.npend = 0;
+    vef_priv.pending = NULL;
+    vef_priv.bufp = NULL;
+    vef_priv.vgz = NULL;
 
-    ssize_t result = vfp_vep_callback(&example_sess, strlen(example_vef_priv.bufp), VGZ_NORMAL);
-    printf("Processed total of %zd bytes\n", result);
+    // Call the vfp_vep_callback function
+    ssize_t result = vfp_vep_callback(&session, 100, VGZ_NORMAL);
+    printf("Result: %ld\n", result);
 
     return 0;
-}
-
-ssize_t vfp_vep_callback(const struct sess* sp, ssize_t l, enum vgz_flag flg) {
-    // Function body remains unchanged from the snippet you provided.
-    // ...
 }
